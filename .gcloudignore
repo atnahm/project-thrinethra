@@ -1,0 +1,8 @@
+.gcloudignore
+.git
+.gitignore
+node_modules
+btp-tactical/node_modules
+__pycache__
+*.pyc
+data
