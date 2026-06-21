@@ -54,6 +54,9 @@ steps:
 substitutions:
   _REGION: us-central1
   
+options:
+  logging: CLOUD_LOGGING_ONLY
+
 images:
   - 'gcr.io/$PROJECT_ID/btp-backend'
   - 'gcr.io/$PROJECT_ID/btp-frontend'
