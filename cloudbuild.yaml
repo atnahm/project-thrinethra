@@ -22,7 +22,7 @@ steps:
       - '--port'
       - '8000'
 
-  # 4. Extract Backend URL and Build Frontend
+  # 4. Extract Backend URL
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: 'bash'
     args:
@@ -30,13 +30,22 @@ steps:
       - |
         BACKEND_URL=$$(gcloud run services describe btp-backend --region $_REGION --format="value(status.url)")
         echo "Extracted Backend URL: $$BACKEND_URL"
+        echo "$$BACKEND_URL" > /workspace/backend_url.txt
+
+  # 5. Build Frontend
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        BACKEND_URL=$$(cat /workspace/backend_url.txt)
         docker build -t gcr.io/$PROJECT_ID/btp-frontend --build-arg NEXT_PUBLIC_API_URL=$$BACKEND_URL -f btp-tactical/Dockerfile btp-tactical/
 
-  # 5. Push Frontend
+  # 6. Push Frontend
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/btp-frontend']
 
-  # 6. Deploy frontend to Cloud Run
+  # 7. Deploy frontend to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:

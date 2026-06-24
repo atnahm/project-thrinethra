@@ -134,7 +134,9 @@ export default function Home() {
       if (data.zones?.length) {
         setRawZones(data.zones);
         setConnectionOffline(false);
-        addFeedLog(`[TEMPORAL_MATRIX] Sliced matrix — ${DAYS_OF_WEEK[timeWindow.dayIndex]} ${String(timeWindow.hour).padStart(2, '0')}:00.`);
+        if (isInitialLoad.current) {
+          addFeedLog(`[TEMPORAL_MATRIX] Sliced matrix — ${DAYS_OF_WEEK[timeWindow.dayIndex]} ${String(timeWindow.hour).padStart(2, '0')}:00.`);
+        }
       } else {
         setRawZones([]); setSelectedZone(null); setConnectionOffline(true);
         addFeedLog('[WARNING] Zero active hotspots.');
@@ -148,7 +150,54 @@ export default function Home() {
     }
   }, [addFeedLog, timeWindow]);
 
-  useEffect(() => { fetchZones(); const id = setInterval(fetchZones, 5000); return () => clearInterval(id); }, [fetchZones]);
+  useEffect(() => {
+    fetchZones();
+
+    // Setup WebSocket for realtime updates
+    let ws: WebSocket | null = null;
+    let retryTimeout: NodeJS.Timeout;
+
+    const connectWebSocket = () => {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const wsUrl = apiUrl.replace(/^https?/, match => match === 'https' ? 'wss' : 'ws') + '/api/v1/ws/updates';
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        addFeedLog('[SYS_INFO] Real-time telemetry feed connected.');
+        setConnectionOffline(false);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.zones) {
+            setRawZones(data.zones);
+            addFeedLog('[TELEMETRY] Live spatial congestion updated.');
+          }
+        } catch (e) {
+          console.error("Error parsing websocket message", e);
+        }
+      };
+
+      ws.onclose = () => {
+        addFeedLog('[SYS_WARN] Real-time feed lost. Retrying...');
+        setConnectionOffline(true);
+        retryTimeout = setTimeout(connectWebSocket, 5000);
+      };
+
+      ws.onerror = () => {
+        if (ws) ws.close();
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      clearTimeout(retryTimeout);
+      if (ws) ws.close();
+    };
+  }, [fetchZones, addFeedLog]);
 
   // ── Derived State ──
 
@@ -184,9 +233,37 @@ export default function Home() {
 
   // ── Event Handlers ──
 
-  const handleDispatch = useCallback((clusterId: number, station: string) => {
+  const handleDispatch = useCallback(async (clusterId: number, station: string) => {
     setDispatchedClusters(prev => ({ ...prev, [clusterId]: true }));
-    addFeedLog(`[DISPATCH] Unit sent to ${station.replace(' Traffic PS', '')}.`);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const towTrucks = 1; // Basic logic
+      const patrols = 1; // Basic logic
+
+      const res = await fetch(`${apiUrl}/api/v1/dispatch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          cluster_id: clusterId,
+          police_station: station,
+          heavy_tow_trucks: towTrucks,
+          patrol_units: patrols
+        }),
+      });
+
+      if (!res.ok) {
+         throw new Error('Network response was not ok');
+      }
+
+      const data = await res.json();
+      addFeedLog(`[DISPATCH] ${data.message || `Unit sent to ${station.replace(' Traffic PS', '')}.`}`);
+    } catch (error) {
+      console.error("Failed to dispatch via API", error);
+      addFeedLog(`[DISPATCH ERROR] Failed to send dispatch API request for ${station.replace(' Traffic PS', '')}. Fallback logged locally.`);
+    }
   }, [addFeedLog]);
 
   const handlePolygonComplete = useCallback((data: { latlngs: [number, number][] } | null) => {
