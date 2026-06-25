@@ -16,3 +16,16 @@ class DispatchResponse(BaseModel):
     status: str
     active_hotspots_count: int
     zones: List[DispatchZone]
+
+class TelemetryData(BaseModel):
+    latitude: float
+    longitude: float
+    vehicle_type: str
+    junction_name: str
+    police_station: str
+
+class DispatchRequest(BaseModel):
+    cluster_id: int
+    police_station: str
+    heavy_tow_trucks: int
+    patrol_units: int

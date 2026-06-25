@@ -78,6 +78,38 @@ class CongestionEngine:
         
         logger.info(f"Loaded {len(self.df)} valid records into memory.")
 
+    def add_telemetry(self, data: dict):
+        """Adds a single telemetry data point and updates the dataframe."""
+        new_row = pd.DataFrame([data])
+
+        # Calculate derived columns for the new row
+        vehicle_weights = {
+            'TANKER': 1.0, 'TRUCK': 1.0, 'BUS': 0.9, 'MAXI-CAB': 0.7,
+            'CAR': 0.5, 'PASSENGER AUTO': 0.4, 'SCOOTER': 0.1, 'MOTOR CYCLE': 0.1
+        }
+        v_type = data.get('vehicle_type', 'CAR')
+        v_weight = vehicle_weights.get(v_type.upper(), 0.3)
+        new_row['vehicle_weight'] = v_weight
+
+        v_upper = str(v_type).upper().strip()
+        if 'TANKER' in v_upper or 'TRUCK' in v_upper or 'BUS' in v_upper:
+            v_class = 'heavy'
+        elif 'MAXI-CAB' in v_upper or 'CAR' in v_upper or 'PASSENGER AUTO' in v_upper:
+            v_class = 'medium'
+        else:
+            v_class = 'light'
+        new_row['v_class'] = v_class
+
+        j_name = data.get('junction_name', 'No Junction')
+        j_weight = 1 if j_name == 'No Junction' else 5
+        new_row['junction_weight'] = j_weight
+
+        new_row['severity_score'] = v_weight * j_weight
+
+        # Append to the dataframe
+        self.df = pd.concat([self.df, new_row], ignore_index=True)
+        logger.info(f"Added new telemetry data. Total records: {len(self.df)}")
+
     def calculate_active_hotspots(self, top_n: int = 20) -> List[Dict[str, Any]]:
         if self.df.empty:
             return []
